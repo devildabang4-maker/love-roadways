@@ -1,0 +1,123 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LOVE ROADWAYS — Bollywood Radio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#"><span class="brand-mark">L</span><span>LOVE ROADWAYS<small>RADIO</small></span></a>
+  <nav><a href="#home">Home</a><a href="#browse">Browse</a><a href="#playlists">Playlists</a><a href="#about">About</a></nav>
+  <div class="top-actions"><button class="icon-btn" onclick="toggleTheme()">◐</button><a class="admin-link" href="/admin">Admin</a></div>
+</header>
+
+<main>
+<section class="hero" id="home">
+ <div class="hero-copy"><p class="eyebrow">BOLLYWOOD • RETRO • NOSTALGIA</p>
+ <h1>Gaane jo<br><em>yaadein</em> bana dein.</h1>
+ <p class="hero-text">Your digital roadside radio for timeless Hindi music. Search, queue, save favourites and keep the music rolling.</p>
+ <div class="hero-actions"><button class="primary" onclick="playFirst()">▶ Start Listening</button><a class="secondary" href="#browse">Explore Songs ↓</a></div></div>
+ <div class="hero-card"><div class="vinyl"><div class="vinyl-hole"></div></div><div class="now-note">NOW PLAYING</div><h3 id="heroTitle">Select a song</h3><p id="heroArtist">Your journey starts here.</p></div>
+</section>
+
+<section class="ticker"><span>♪ 90s HITS</span><span>✦ ROMANTIC</span><span>♪ SAD SONGS</span><span>✦ PARTY</span><span>♪ TRAVEL</span><span>✦ BOLLYWOOD</span></section>
+
+<section class="section" id="browse">
+ <div class="section-head"><div><p class="eyebrow">THE COLLECTION</p><h2>Choose your mood.</h2></div>
+ <div class="search-wrap"><span>⌕</span><input id="search" placeholder="Search song, artist or movie..."></div></div>
+ <div class="chips" id="chips">
+  <button class="chip active" data-cat="All">All</button><button class="chip" data-cat="90s Classics">90s Classics</button>
+  <button class="chip" data-cat="Romantic">Romantic</button><button class="chip" data-cat="Sad">Sad</button>
+  <button class="chip" data-cat="Party">Party</button><button class="chip" data-cat="Travel">Travel</button><button class="chip" data-cat="2000s">2000s</button>
+ </div>
+ <div class="library-bar"><span><b id="count">0</b> songs</span><div><button id="favFilter" class="small-filter">♥ Favourites</button><button id="queueBtn" class="small-filter">Queue (<b id="queueCount">0</b>)</button></div></div>
+ <div class="song-grid" id="songGrid"></div>
+</section>
+
+<section class="playlists" id="playlists">
+ <p class="eyebrow">QUICK PLAYLISTS</p><h2>Pick a road.</h2>
+ <div class="playlist-grid">
+  <button onclick="playlist('90s Classics')"><b>90s</b><span>Golden Bollywood</span></button>
+  <button onclick="playlist('Romantic')"><b>♥</b><span>Love & Rain</span></button>
+  <button onclick="playlist('Sad')"><b>☾</b><span>Late Night</span></button>
+  <button onclick="playlist('Party')"><b>♫</b><span>Full Volume</span></button>
+  <button onclick="playlist('Travel')"><b>↗</b><span>Highway Drive</span></button>
+ </div>
+</section>
+
+<section class="feature"><div><p class="eyebrow">THE ROAD NEVER ENDS</p><h2>One playlist.<br><em>Many memories.</em></h2></div><p>Build your own queue, save favourites and let LOVE ROADWAYS become your personal Bollywood radio.</p></section>
+
+<section class="about" id="about"><p class="eyebrow">ABOUT LOVE ROADWAYS</p><h2>For people who still<br>remember the lyrics.</h2><p>A retro music web app. Playback uses YouTube's embedded player; use only videos you are authorized to embed.</p></section>
+</main>
+
+<footer><span>© 2026 LOVE ROADWAYS</span><span>Made for the love of Bollywood.</span></footer>
+
+<div class="player" id="player">
+ <div class="player-top">
+  <div class="compact-media">
+   <div id="ytPlayerDock" class="yt-dock"><div id="ytPlayer"></div></div>
+   <div class="compact-info"><strong id="playerTitle">Nothing playing</strong><small id="playerArtist">Choose a song</small></div>
+  </div>
+  <div class="player-right"><span id="status">Ready</span><button onclick="toggleLyrics()">Lyrics</button></div>
+ </div>
+ <div class="progress-row"><span id="currentTime">0:00</span><input id="progress" type="range" min="0" max="100" value="0" step="0.1"><span id="duration">0:00</span></div>
+ <div class="controls"><button onclick="previousSong()">⏮</button><button class="big-play" id="mainPlay" onclick="togglePlay()">▶</button><button onclick="nextSong()">⏭</button><button onclick="toggleMute()" id="muteBtn">🔊</button><input id="volume" type="range" min="0" max="100" value="100"><button onclick="toggleDock()">▣</button></div>
+</div>
+
+<div class="lyrics-panel" id="lyricsPanel"><div class="lyrics-head"><span>LYRICS</span><button onclick="toggleLyrics()">×</button></div><div class="lyrics-body"><h3 id="lyricsTitle">Select a song</h3><p>Lyrics are not bundled because commercial song lyrics are copyrighted. Add lyrics you are licensed to use or connect a licensed lyrics provider.</p></div></div>
+
+<div class="queue-panel" id="queuePanel"><div class="lyrics-head"><span>YOUR QUEUE</span><button onclick="toggleQueue()">×</button></div><div id="queueList" class="queue-list"></div></div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+const INITIAL_SONGS={{ songs|tojson }};
+let SONGS=INITIAL_SONGS, currentIndex=-1, currentSong=null, ytPlayer=null, ytReady=false, pendingSong=null;
+let queue=JSON.parse(localStorage.getItem("lr_queue")||"[]"), activeCategory="All", favouritesOnly=false, progressTimer=null;
+
+function onYouTubeIframeAPIReady(){ytPlayer=new YT.Player("ytPlayer",{width:"480",height:"270",playerVars:{playsinline:1,controls:1,rel:0},events:{onReady:onPlayerReady,onStateChange:onPlayerStateChange,onError:onPlayerError,onAutoplayBlocked:onAutoplayBlocked}})}
+function onPlayerReady(e){ytReady=true;e.target.setVolume(100);if(pendingSong){currentSong=pendingSong;currentIndex=SONGS.findIndex(s=>s.id===pendingSong.id);updateMeta(pendingSong);pendingSong=null}startProgressLoop()}
+function onPlayerStateChange(e){if(e.data===YT.PlayerState.PLAYING)setState(true,"Playing");else if(e.data===YT.PlayerState.PAUSED)setState(false,"Paused");else if(e.data===YT.PlayerState.ENDED)nextSong();else if(e.data===YT.PlayerState.BUFFERING)status("Buffering…")}
+function onPlayerError(e){status("This video is unavailable/blocked");setTimeout(nextSong,900)}
+function onAutoplayBlocked(){status("Press Play to start audio")}
+function status(t){document.getElementById("status").textContent=t}
+function setState(play,t){document.getElementById("mainPlay").textContent=play?"Ⅱ":"▶";status(t)}
+function playFirst(){if(SONGS.length)playSong(SONGS[0])}
+function playSong(s){currentSong=s;currentIndex=SONGS.findIndex(x=>x.id===s.id);updateMeta(s);if(!ytReady){pendingSong=s;status("Loading player…");return}document.getElementById("ytPlayerDock").classList.add("open");ytPlayer.loadVideoById(s.youtube_id);ytPlayer.unMute();ytPlayer.setVolume(+document.getElementById("volume").value||100);highlight()}
+function togglePlay(){if(!ytReady)return status("Player is loading…");if(!currentSong)return playFirst();ytPlayer.unMute();const st=ytPlayer.getPlayerState();if(st===YT.PlayerState.PLAYING)ytPlayer.pauseVideo();else ytPlayer.playVideo()}
+function nextSong(){if(queue.length){const id=queue.shift();saveQueue();const s=SONGS.find(x=>x.id===id);if(s)return playSong(s)}if(!SONGS.length)return;currentIndex=(currentIndex+1)%SONGS.length;playSong(SONGS[currentIndex])}
+function previousSong(){if(!ytReady)return;const t=ytPlayer.getCurrentTime()||0;if(t>5){ytPlayer.seekTo(0,true);return}currentIndex=(currentIndex-1+SONGS.length)%SONGS.length;playSong(SONGS[currentIndex])}
+function updateMeta(s){document.getElementById("playerTitle").textContent=s.title;document.getElementById("playerArtist").textContent=s.artist+" · "+s.movie;document.getElementById("heroTitle").textContent=s.title;document.getElementById("heroArtist").textContent=s.artist;document.getElementById("lyricsTitle").textContent=s.title}
+function highlight(){document.querySelectorAll(".song-card").forEach(c=>c.classList.toggle("selected",currentSong&&+c.dataset.id===currentSong.id))}
+function addQueue(id){if(!queue.includes(id)){queue.push(id);saveQueue();renderQueue()}document.getElementById("queueCount").textContent=queue.length}
+function saveQueue(){localStorage.setItem("lr_queue",JSON.stringify(queue));document.getElementById("queueCount").textContent=queue.length}
+function toggleQueue(){document.getElementById("queuePanel").classList.toggle("show");renderQueue()}
+function renderQueue(){const box=document.getElementById("queueList");box.innerHTML=queue.map(id=>{const s=SONGS.find(x=>x.id===id);return s?`<div class="queue-row"><span>${s.title}</span><button onclick="removeQueue(${id})">×</button></div>`:""}).join("")||"<p class='muted'>Queue is empty.</p>"}
+function removeQueue(id){queue=queue.filter(x=>x!==id);saveQueue();renderQueue()}
+function toggleFav(id){fetch(`/api/songs/${id}/favorite`,{method:"POST"}).then(r=>r.json()).then(x=>{const s=SONGS.find(s=>s.id===id);if(s)s.favorite=x.favorite;renderSongs()})}
+function toggleLyrics(){document.getElementById("lyricsPanel").classList.toggle("show")}
+function toggleDock(){document.getElementById("ytPlayerDock").classList.toggle("collapsed")}
+function toggleMute(){if(!ytReady)return;if(ytPlayer.isMuted()){ytPlayer.unMute();ytPlayer.setVolume(+volume.value||100);muteBtn.textContent="🔊"}else{ytPlayer.mute();muteBtn.textContent="🔇"}}
+volume.addEventListener("input",e=>{if(ytReady){ytPlayer.unMute();ytPlayer.setVolume(+e.target.value);muteBtn.textContent=(+e.target.value===0?"🔇":"🔊")}})
+progress.addEventListener("input",e=>{currentTime.textContent=formatTime(+e.target.value)})
+progress.addEventListener("change",e=>{if(ytReady)ytPlayer.seekTo(+e.target.value,true)})
+function startProgressLoop(){if(progressTimer)return;progressTimer=setInterval(updateProgress,250)}
+function updateProgress(){if(!ytReady||!ytPlayer)return;const d=ytPlayer.getDuration()||0,c=ytPlayer.getCurrentTime()||0;if(d){progress.max=d;progress.value=c;currentTime.textContent=formatTime(c);duration.textContent=formatTime(d)}}
+function formatTime(s){s=Math.max(0,Math.floor(s||0));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
+
+function renderSongs(){const q=search.value.toLowerCase();const filtered=SONGS.filter(s=>(activeCategory==="All"||s.category===activeCategory)&&(!favouritesOnly||s.favorite)&&`${s.title} ${s.artist} ${s.movie} ${s.category}`.toLowerCase().includes(q));count.textContent=filtered.length;
+songGrid.innerHTML=filtered.map((s,i)=>`<article class="song-card ${currentSong&&currentSong.id===s.id?"selected":""}" data-id="${s.id}">
+<div class="cover cover-${i%5}"><span>${s.year}</span><b>${(s.movie||"L").slice(0,1)}</b></div>
+<div class="song-info"><div><h3>${s.title}</h3><p>${s.artist} · ${s.movie}</p></div>
+<div class="card-actions"><button class="heart ${s.favorite?"on":""}" onclick="toggleFav(${s.id})">♥</button><button class="play-small" onclick="playSongById(${s.id})">▶</button><button class="add-q" onclick="addQueue(${s.id})">+</button></div></div></article>`).join("")}
+function playSongById(id){const s=SONGS.find(x=>x.id===id);if(s)playSong(s)}
+function playlist(cat){activeCategory=cat;favouritesOnly=false;document.querySelectorAll(".chip").forEach(x=>x.classList.toggle("active",x.dataset.cat===cat));renderSongs();document.getElementById("browse").scrollIntoView({behavior:"smooth"})}
+search.addEventListener("input",renderSongs);favFilter.addEventListener("click",()=>{favouritesOnly=!favouritesOnly;favFilter.classList.toggle("active",favouritesOnly);renderSongs()})
+document.querySelectorAll(".chip").forEach(x=>x.addEventListener("click",()=>{activeCategory=x.dataset.cat;favouritesOnly=false;document.querySelectorAll(".chip").forEach(y=>y.classList.toggle("active",y===x));renderSongs()}))
+function toggleTheme(){document.body.classList.toggle("light");localStorage.setItem("lr_theme",document.body.classList.contains("light")?"light":"dark")}
+if(localStorage.getItem("lr_theme")==="light")document.body.classList.add("light");saveQueue();renderSongs();renderQueue();
+</script>
+</body></html>
