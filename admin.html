@@ -1,0 +1,24 @@
+
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LOVE ROADWAYS — Admin</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body>
+<header class="topbar"><a class="brand" href="/"><span class="brand-mark">L</span><span>LOVE ROADWAYS<small>ADMIN</small></span></a><a href="/" class="secondary">← Website</a></header>
+<main class="admin-page">
+<h1>Music Library</h1><p class="muted">Add or edit songs. Put the YouTube video ID in the YouTube ID field. Use only videos you are authorized to embed.</p>
+<form id="songForm" class="admin-form">
+<input type="hidden" id="editId"><input id="title" placeholder="Song title" required><input id="artist" placeholder="Artist">
+<input id="movie" placeholder="Movie"><input id="year" placeholder="Year"><input id="category" placeholder="Category">
+<input id="youtube_id" placeholder="YouTube video ID"><button class="primary" type="submit">Save Song</button><button type="button" class="secondary" onclick="resetForm()">Clear</button>
+</form>
+<div class="admin-table"><table><thead><tr><th>#</th><th>Song</th><th>Artist</th><th>Category</th><th>YouTube</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
+</main>
+<script>
+let songs={{ songs|tojson }};
+const $=id=>document.getElementById(id);
+function draw(){rows.innerHTML=songs.map(s=>`<tr><td>${s.id}</td><td>${s.title}</td><td>${s.artist}</td><td>${s.category}</td><td>${s.youtube_id||"<span class='muted'>Not set</span>"}</td><td><button onclick='edit(${s.id})'>Edit</button> <button onclick='del(${s.id})'>Delete</button></td></tr>`).join("")}
+function edit(id){const s=songs.find(x=>x.id===id);$("editId").value=s.id;$("title").value=s.title;$("artist").value=s.artist;$("movie").value=s.movie;$("year").value=s.year;$("category").value=s.category;$("youtube_id").value=s.youtube_id||"";scrollTo(0,0)}
+function resetForm(){document.querySelector("form").reset();$("editId").value=""}
+$("songForm").addEventListener("submit",async e=>{e.preventDefault();const data={title:$("title").value,artist:$("artist").value,movie:$("movie").value,year:$("year").value,category:$("category").value,youtube_id:$("youtube_id").value};const id=$("editId").value;const r=await fetch(id?`/api/songs/${id}`:"/api/songs",{method:id?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(r.ok){const s=await r.json();if(id)songs=songs.map(x=>x.id==id?s:x);else songs.push(s);draw();resetForm()}})
+async function del(id){if(!confirm("Delete this song?"))return;await fetch(`/api/songs/${id}`,{method:"DELETE"});songs=songs.filter(x=>x.id!==id);draw()}
+draw();
+</script></body></html>
