@@ -1,230 +1,25 @@
 (() => {
-  const $ = id => document.getElementById(id);
-  let songs = Array.isArray(window.LOVE_SONGS) ? window.LOVE_SONGS : [];
-  let currentIndex = 0;
-  let playing = false;
-  let bound = false;
-  let ytPlayer = null;
-  let ytReady = false;
-  let pendingVideoId = '';
-
-  const show = el => el && el.classList.add('show');
-  const hide = el => el && el.classList.remove('show');
-  const current = () => songs[currentIndex] || {};
-  const setText = (id, value) => { const el = $(id); if (el) el.textContent = value || ''; };
-
-  function updateUI() {
-    const s = current();
-    setText('playerTitle', s.title || 'Choose a song');
-    setText('playerArtist', s.artist && s.movie ? `${s.artist} · ${s.movie}` : (s.artist || ''));
-    setText('playerMood', `${(s.mood || s.category || 'BOLLYWOOD').toUpperCase()} · ${s.year || ''}`);
-    setText('heroTitle', s.title || 'Love Roadways');
-    setText('heroArtist', s.artist && s.movie ? `${s.artist} · ${s.movie}` : (s.artist || ''));
-    setText('heroMood', (s.mood || s.category || 'BOLLYWOOD').toUpperCase());
-    setText('fullTitle', s.title || '');
-    setText('fullArtist', s.artist && s.movie ? `${s.artist} · ${s.movie}` : (s.artist || ''));
-    setText('fullMood', (s.mood || s.category || 'BOLLYWOOD').toUpperCase());
-    const thumb = $('ytThumb');
-    if (thumb) thumb.style.backgroundImage = s.yt ? `url(https://i.ytimg.com/vi/${s.yt}/hqdefault.jpg)` : '';
-    ['playBtn', 'heroCardPlay', 'fullPlay'].forEach(id => {
-      const el = $(id);
-      if (el) el.textContent = playing ? 'Ⅱ' : '▶';
-    });
-  }
-
-  function loadYouTubeApi() {
-    if (window.YT && window.YT.Player) { ytReady = true; return; }
-    const previous = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      ytReady = true;
-      if (typeof previous === 'function') previous();
-      if (pendingVideoId) createYouTubePlayer(pendingVideoId);
-    };
-  }
-
-  function createYouTubePlayer(videoId) {
-    const host = $('fullYoutube');
-    if (!host || !videoId || !window.YT || !window.YT.Player) return;
-    pendingVideoId = videoId;
-    if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
-      ytPlayer.loadVideoById(videoId);
-      ytPlayer.playVideo();
-      return;
-    }
-    host.innerHTML = '<div id="ytActualPlayer"></div>';
-    ytPlayer = new YT.Player('ytActualPlayer', {
-      videoId,
-      playerVars: {
-        autoplay: 1,
-        controls: 1,
-        rel: 0,
-        playsinline: 1,
-        modestbranding: 1,
-        iv_load_policy: 3,
-        origin: window.location.origin
-      },
-      events: {
-        onReady: event => {
-          event.target.setVolume(100);
-          event.target.playVideo();
-        },
-        onStateChange: event => {
-          if (event.data === YT.PlayerState.PLAYING) { playing = true; updateUI(); }
-          if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.ENDED) { playing = false; updateUI(); }
-        },
-        onError: event => {
-          playing = false;
-          updateUI();
-          const status = $('searchStatus');
-          if (status) status.textContent = 'Ye YouTube video embed/play nahi ho raha. Dusra result choose karo.';
-        }
-      }
-    });
-  }
-
-  function openFull(song = current()) {
-    if (!song || !song.title) return;
-    if (!song.yt) return resolveSong(song);
-    const full = $('fullscreenPlayer');
-    const bg = $('fullBg');
-    if (bg) bg.style.backgroundImage = `url(https://i.ytimg.com/vi/${song.yt}/maxresdefault.jpg)`;
-    show(full);
-    if (full) full.classList.add('open');
-    pendingVideoId = song.yt;
-    playing = true;
-    updateUI();
-    if (ytReady && window.YT && window.YT.Player) createYouTubePlayer(song.yt);
-  }
-
-  function closeFull() {
-    const full = $('fullscreenPlayer');
-    if (full) full.classList.remove('open');
-    hide(full);
-    if (ytPlayer && typeof ytPlayer.stopVideo === 'function') ytPlayer.stopVideo();
-    playing = false;
-    updateUI();
-  }
-
-  function selectSong(index, open = true) {
-    if (!songs.length || index < 0 || index >= songs.length) return;
-    currentIndex = index;
-    updateUI();
-    renderQueue();
-    if (open) openFull(current());
-  }
-
-  async function resolveSong(song) {
-    if (!song || !song.title) return;
-    try {
-      const r = await fetch(`/api/youtube-search?q=${encodeURIComponent(`${song.title} ${song.artist || ''}`)}`);
-      const data = await r.json();
-      if (!r.ok || !data.items || !data.items.length) throw new Error(data.error || 'Playable YouTube video nahi mila.');
-      song.yt = data.items[0].yt;
-      song.thumb = data.items[0].thumb;
-      updateUI();
-      openFull(song);
-    } catch (e) {
-      alert(e.message || 'Song load nahi ho paya.');
-    }
-  }
-
-  function renderQueue() {
-    const box = $('queueList');
-    if (!box) return;
-    const list = [];
-    for (let n = 1; n <= songs.length && list.length < 5; n++) list.push(songs[(currentIndex + n) % songs.length]);
-    const count = $('queueCount');
-    if (count) count.textContent = list.length;
-    box.innerHTML = list.map((s, n) => `<div class="queue-item" data-qid="${songs.indexOf(s)}"><b>${String(n + 1).padStart(2, '0')}</b><div><b>${s.title || ''}</b><small>${s.artist || ''}</small></div></div>`).join('') || '<p style="padding:15px;color:#777;font-size:12px">Queue empty.</p>';
-    box.querySelectorAll('[data-qid]').forEach(el => el.onclick = () => selectSong(Number(el.dataset.qid), true));
-  }
-
-  function cardSong(card) {
-    const p = card.querySelector('p')?.textContent || '';
-    const parts = p.split('·');
-    return {
-      id: Number(card.dataset.id), title: card.querySelector('h3')?.textContent.trim() || '',
-      artist: parts[0]?.trim() || '', movie: parts.slice(1).join('·').trim() || '',
-      year: card.querySelector('small')?.textContent.split('·')[0].trim() || '',
-      mood: card.dataset.mood || 'Bollywood',
-      yt: card.querySelector('.song-photo')?.src?.match(/\/vi\/([^/]+)\//)?.[1] || ''
-    };
-  }
-
-  function filterCards(mood) {
-    document.querySelectorAll('.song-card').forEach(c => c.style.display = (mood === 'All' || c.dataset.mood === mood) ? '' : 'none');
-  }
-
-  async function loadLocalSongsIfNeeded() {
-    if (songs.length) return;
-    try {
-      const r = await fetch('/api/songs');
-      if (!r.ok) return;
-      const data = await r.json();
-      if (Array.isArray(data)) {
-        songs = data.map(s => ({ id:Number(s.id), title:s.title, artist:s.artist, movie:s.movie, year:s.year, mood:s.category, yt:s.youtube_id || '', thumb:s.youtube_id ? `https://i.ytimg.com/vi/${s.youtube_id}/hqdefault.jpg` : '' }));
-        if (songs.length) currentIndex = Math.max(0, songs.findIndex(s => s.yt));
-      }
-    } catch (_) {}
-  }
-
-  function bind() {
-    if (bound) return;
-    bound = true;
-    $('searchOpen')?.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); show($('searchOverlay')); setTimeout(() => $('searchInput')?.focus(), 50); });
-    $('searchClose')?.addEventListener('click', () => hide($('searchOverlay')));
-    $('fullClose')?.addEventListener('click', closeFull);
-    $('openVideo')?.addEventListener('click', () => openFull());
-    $('heroPlay')?.addEventListener('click', () => selectSong(currentIndex, true));
-    $('heroCardPlay')?.addEventListener('click', () => selectSong(currentIndex, true));
-    $('playBtn')?.addEventListener('click', () => { if (playing && ytPlayer) ytPlayer.pauseVideo(); else selectSong(currentIndex, true); });
-    $('fullPlay')?.addEventListener('click', () => { if (playing && ytPlayer) ytPlayer.pauseVideo(); else openFull(); });
-    $('nextBtn')?.addEventListener('click', () => selectSong((currentIndex + 1) % Math.max(songs.length, 1), true));
-    $('prevBtn')?.addEventListener('click', () => selectSong((currentIndex - 1 + songs.length) % Math.max(songs.length, 1), true));
-    $('fullNext')?.addEventListener('click', () => selectSong((currentIndex + 1) % Math.max(songs.length, 1), true));
-    $('fullPrev')?.addEventListener('click', () => selectSong((currentIndex - 1 + songs.length) % Math.max(songs.length, 1), true));
-    $('themeBtn')?.addEventListener('click', () => document.body.classList.toggle('dark'));
-    $('shuffleBtn')?.addEventListener('click', () => { if (songs.length) selectSong(Math.floor(Math.random() * songs.length), true); });
-    $('queueBtn')?.addEventListener('click', () => show($('queueDrawer')));
-    $('queueClose')?.addEventListener('click', () => hide($('queueDrawer')));
-    $('lyricsBtn')?.addEventListener('click', () => { setText('lyricsTitle', current().title || 'Song lyrics'); show($('lyricsOverlay')); });
-    $('lyricsClose')?.addEventListener('click', () => hide($('lyricsOverlay')));
-
-    document.querySelectorAll('.song-card').forEach(card => card.addEventListener('click', e => {
-      if (e.target.closest('.heart')) return;
-      const local = cardSong(card);
-      let idx = songs.findIndex(s => Number(s.id) === local.id);
-      if (idx < 0) { songs.push(local); idx = songs.length - 1; }
-      selectSong(idx, true);
-    }));
-    document.querySelectorAll('.chip').forEach(ch => ch.addEventListener('click', () => { document.querySelectorAll('.chip').forEach(x => x.classList.remove('active')); ch.classList.add('active'); filterCards(ch.dataset.mood); }));
-    document.querySelectorAll('.mood-card').forEach(c => c.addEventListener('click', () => { const ch=[...document.querySelectorAll('.chip')].find(x=>x.dataset.mood===c.dataset.moodJump); if(ch){ch.click();$('collection')?.scrollIntoView({behavior:'smooth'});} }));
-
-    let timer;
-    $('searchInput')?.addEventListener('input', e => {
-      clearTimeout(timer); const q=e.target.value.trim();
-      if(q.length<2){const box=$('searchResults');if(box)box.innerHTML='';setText('searchStatus','Song, artist ya movie search karo.');return;}
-      setText('searchStatus','Gaana dhoond rahe hain…');
-      timer=setTimeout(async()=>{
-        try{
-          let items=songs.filter(s=>`${s.title} ${s.artist} ${s.movie} ${s.year}`.toLowerCase().includes(q.toLowerCase())).slice(0,12).map(s=>({...s,thumb:s.thumb||(s.yt?`https://i.ytimg.com/vi/${s.yt}/hqdefault.jpg`:'')}));
-          if(!items.length){const r=await fetch(`/api/youtube-search?q=${encodeURIComponent(q)}`);const data=await r.json();if(!r.ok)throw new Error(data.error||'Search failed');items=data.items||[];}
-          setText('searchStatus',`${items.length} results — gaane par click karo`);
-          const box=$('searchResults');if(!box)return;
-          box.innerHTML=items.map((s,i)=>`<button class="search-result" data-search-index="${i}"><span class="search-thumb" style="background-image:url('${s.thumb||''}')"></span><span><b>${s.title||''}</b><small>${s.artist||'YouTube'} · ${s.year||''}</small></span><strong>▶</strong></button>`).join('')||'<div class="search-empty">Kuch nahi mila.</div>';
-          box.querySelectorAll('[data-search-index]').forEach(el=>el.onclick=()=>{const s=items[Number(el.dataset.searchIndex)];songs.push(s);currentIndex=songs.length-1;hide($('searchOverlay'));updateUI();openFull(s);});
-        }catch(err){setText('searchStatus',err.message||'Search failed');}
-      },300);
-    });
-    window.addEventListener('keydown',e=>{if(e.key==='Escape'){closeFull();document.querySelectorAll('.overlay').forEach(hide);hide($('queueDrawer'));}});
-  }
-
-  async function start(){
-    bind();
-    loadYouTubeApi();
-    await loadLocalSongsIfNeeded();
-    if(songs.length){const first=songs.findIndex(s=>s.yt);currentIndex=first>=0?first:0;renderQueue();updateUI();}
-  }
-
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
+const $=id=>document.getElementById(id);let songs=Array.isArray(window.LOVE_SONGS)?window.LOVE_SONGS:[],currentIndex=0,playing=false,bound=false,ytPlayer=null,ytReady=false,pendingVideoId='';
+const show=e=>e&&e.classList.add('show'),hide=e=>e&&e.classList.remove('show'),current=()=>songs[currentIndex]||{},setText=(id,v)=>{const e=$(id);if(e)e.textContent=v||''};
+function injectStyle(){if($('lovePlayerPatch'))return;const s=document.createElement('style');s.id='lovePlayerPatch';s.textContent=`
+.player-track{cursor:pointer;transition:.25s}.player-track:hover{transform:translateY(-1px)}.player-track:hover .mini-art{box-shadow:0 0 0 5px rgba(242,79,123,.1),0 10px 30px rgba(242,79,123,.18)}.mini-art{transition:.25s}
+.fullscreen-player{overflow:hidden!important}.full-bg{filter:blur(3px) saturate(1.15);transform:scale(1.08)}.fullscreen-player:after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,rgba(242,79,123,.12),transparent 35%),linear-gradient(180deg,rgba(19,15,28,.08),rgba(19,15,28,.55));pointer-events:none;z-index:1}.full-particles{z-index:3!important;pointer-events:none}.full-particles i{animation:loveFloat 5s ease-in-out infinite!important;text-shadow:0 0 18px rgba(255,160,190,.8)}.full-particles i:nth-child(2n){animation-delay:-1.7s!important}.full-particles i:nth-child(3n){animation-delay:-3.1s!important}@keyframes loveFloat{0%,100%{transform:translate3d(0,18px,0) rotate(-5deg);opacity:.25}50%{transform:translate3d(18px,-24px,0) rotate(8deg);opacity:1}}.full-content{position:relative;z-index:4!important}.full-video{position:relative;overflow:hidden;background:#111;border-radius:26px;box-shadow:0 35px 100px rgba(0,0,0,.35)}#fullYoutube,#fullYoutube iframe,#ytActualPlayer{width:100%;height:100%;min-height:430px;display:block;border:0}.full-video-shade{z-index:5!important;pointer-events:none}.full-info{position:relative;z-index:6}.full-actions button{transition:.2s}.full-actions button:hover{transform:scale(1.08)}.yt-mini{cursor:pointer}@media(max-width:700px){#fullYoutube,#fullYoutube iframe,#ytActualPlayer{min-height:250px}.fullscreen-player{padding:12px!important}.full-content{width:100%!important}.player-track{max-width:62vw}}
+`;document.head.appendChild(s)}
+function updateUI(){const s=current();setText('playerTitle',s.title||'Choose a song');setText('playerArtist',s.artist&&s.movie?`${s.artist} · ${s.movie}`:s.artist||'');setText('playerMood',`${(s.mood||s.category||'BOLLYWOOD').toUpperCase()} · ${s.year||''}`);setText('heroTitle',s.title||'Love Roadways');setText('heroArtist',s.artist&&s.movie?`${s.artist} · ${s.movie}`:s.artist||'');setText('heroMood',(s.mood||s.category||'BOLLYWOOD').toUpperCase());setText('fullTitle',s.title||'');setText('fullArtist',s.artist&&s.movie?`${s.artist} · ${s.movie}`:s.artist||'');setText('fullMood',(s.mood||s.category||'BOLLYWOOD').toUpperCase());const t=$('ytThumb');if(t)t.style.backgroundImage=s.yt?`url(https://i.ytimg.com/vi/${s.yt}/hqdefault.jpg)`:'';const hi=$('heroImage');if(hi&&s.yt)hi.src=`https://i.ytimg.com/vi/${s.yt}/maxresdefault.jpg`;['playBtn','heroCardPlay','fullPlay'].forEach(id=>{const e=$(id);if(e)e.textContent=playing?'Ⅱ':'▶'})}
+function loadAPI(){if(window.YT&&window.YT.Player){ytReady=true;return}const old=window.onYouTubeIframeAPIReady;window.onYouTubeIframeAPIReady=()=>{ytReady=true;if(typeof old==='function')old();if(pendingVideoId)createPlayer(pendingVideoId,true)}}
+function createPlayer(videoId,userGesture=false){const host=$('fullYoutube');if(!host||!videoId||!window.YT||!window.YT.Player)return;pendingVideoId=videoId;if(ytPlayer&&typeof ytPlayer.loadVideoById==='function'){ytPlayer.loadVideoById(videoId);if(userGesture)ytPlayer.playVideo();return}host.innerHTML='<div class="full-visualizer" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div><div id="ytActualPlayer"></div>';const st=document.createElement('style');st.textContent='.full-visualizer{position:absolute;z-index:1;left:50%;bottom:12px;transform:translateX(-50%);display:flex;gap:5px;align-items:end;height:42px;pointer-events:none;opacity:.55}.full-visualizer span{display:block;width:4px;height:10px;border-radius:4px;background:#ff8eae;animation:bars .8s ease-in-out infinite alternate}.full-visualizer span:nth-child(2n){animation-delay:.15s}.full-visualizer span:nth-child(3n){animation-delay:.3s}@keyframes bars{to{height:38px}}#ytActualPlayer{position:relative;z-index:2}';document.head.appendChild(st);ytPlayer=new YT.Player('ytActualPlayer',{videoId,playerVars:{autoplay:userGesture?1:0,controls:1,rel:0,playsinline:1,modestbranding:1,iv_load_policy:3,origin:window.location.origin},events:{onReady:e=>{e.target.setVolume(100);if(userGesture)e.target.playVideo()},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING){playing=true;updateUI()}if(e.data===YT.PlayerState.PAUSED||e.data===YT.PlayerState.ENDED){playing=false;updateUI()}},onError:()=>{playing=false;updateUI();setText('searchStatus','Ye YouTube video embed nahi ho raha. Search se doosra version choose karo.')}}})}
+function openFull(song=current(),gesture=false){if(!song||!song.title)return;if(!song.yt)return resolveSong(song,true);const f=$('fullscreenPlayer'),bg=$('fullBg');if(bg)bg.style.backgroundImage=`url(https://i.ytimg.com/vi/${song.yt}/maxresdefault.jpg)`;show(f);if(f)f.classList.add('open');pendingVideoId=song.yt;updateUI();if(ytReady)createPlayer(song.yt,gesture)}
+function closeFull(){const f=$('fullscreenPlayer');if(f)f.classList.remove('open');hide(f);if(ytPlayer&&ytPlayer.pauseVideo)ytPlayer.pauseVideo();playing=false;updateUI()}
+function selectSong(i,open=true,gesture=true){if(!songs.length||i<0||i>=songs.length)return;currentIndex=i;updateUI();renderQueue();if(open)openFull(current(),gesture)}
+async function resolveSong(song,gesture=true){try{const r=await fetch(`/api/youtube-search?q=${encodeURIComponent(`${song.title} ${song.artist||''}`)}`),d=await r.json();if(!r.ok||!d.items?.length)throw Error(d.error||'Playable YouTube video nahi mila.');song.yt=d.items[0].yt;song.thumb=d.items[0].thumb;updateUI();openFull(song,gesture)}catch(e){alert(e.message||'Song load nahi ho paya.')}}
+function renderQueue(){const b=$('queueList');if(!b)return;const list=[];for(let n=1;n<=songs.length&&list.length<5;n++)list.push(songs[(currentIndex+n)%songs.length]);const c=$('queueCount');if(c)c.textContent=list.length;b.innerHTML=list.map((s,n)=>`<div class="queue-item" data-qid="${songs.indexOf(s)}"><b>${String(n+1).padStart(2,'0')}</b><div><b>${s.title||''}</b><small>${s.artist||''}</small></div></div>`).join('')||'<p style="padding:15px;color:#777;font-size:12px">Queue empty.</p>';b.querySelectorAll('[data-qid]').forEach(e=>e.onclick=()=>selectSong(Number(e.dataset.qid),true,true))}
+function cardSong(c){const p=c.querySelector('p')?.textContent||'',parts=p.split('·');return{id:Number(c.dataset.id),title:c.querySelector('h3')?.textContent.trim()||'',artist:parts[0]?.trim()||'',movie:parts.slice(1).join('·').trim()||'',year:c.querySelector('small')?.textContent.split('·')[0].trim()||'',mood:c.dataset.mood||'Bollywood',yt:c.querySelector('.song-photo')?.src?.match(/\/vi\/([^/]+)\//)?.[1]||''}}
+function filterCards(m){document.querySelectorAll('.song-card').forEach(c=>c.style.display=m==='All'||c.dataset.mood===m?'':'none')}
+async function loadSongs(){if(songs.length)return;try{const r=await fetch('/api/songs');if(!r.ok)return;const d=await r.json();if(Array.isArray(d))songs=d.map(s=>({id:Number(s.id),title:s.title,artist:s.artist,movie:s.movie,year:s.year,mood:s.category,yt:s.youtube_id||'',thumb:s.youtube_id?`https://i.ytimg.com/vi/${s.youtube_id}/hqdefault.jpg`:''}))}catch(_){} }
+function bind(){if(bound)return;bound=true;injectStyle();$('searchOpen')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();show($('searchOverlay'));setTimeout(()=>$('searchInput')?.focus(),50)});$('searchClose')?.addEventListener('click',()=>hide($('searchOverlay')));$('fullClose')?.addEventListener('click',closeFull);
+document.querySelector('.player-track')?.addEventListener('click',e=>{if(e.target.closest('button'))return;selectSong(currentIndex,true,true)});$('openVideo')?.addEventListener('click',e=>{e.stopPropagation();openFull(current(),true)});$('heroPlay')?.addEventListener('click',()=>selectSong(currentIndex,true,true));$('heroCardPlay')?.addEventListener('click',()=>selectSong(currentIndex,true,true));$('playBtn')?.addEventListener('click',e=>{e.stopPropagation();if(playing&&ytPlayer)ytPlayer.pauseVideo();else selectSong(currentIndex,true,true)});$('fullPlay')?.addEventListener('click',()=>{if(playing&&ytPlayer)ytPlayer.pauseVideo();else openFull(current(),true)});$('nextBtn')?.addEventListener('click',()=>selectSong((currentIndex+1)%Math.max(songs.length,1),true,true));$('prevBtn')?.addEventListener('click',()=>selectSong((currentIndex-1+songs.length)%Math.max(songs.length,1),true,true));$('fullNext')?.addEventListener('click',()=>selectSong((currentIndex+1)%Math.max(songs.length,1),true,true));$('fullPrev')?.addEventListener('click',()=>selectSong((currentIndex-1+songs.length)%Math.max(songs.length,1),true,true));$('themeBtn')?.addEventListener('click',()=>document.body.classList.toggle('dark'));$('shuffleBtn')?.addEventListener('click',()=>{if(songs.length)selectSong(Math.floor(Math.random()*songs.length),true,true)});$('queueBtn')?.addEventListener('click',()=>show($('queueDrawer')));$('queueClose')?.addEventListener('click',()=>hide($('queueDrawer')));$('lyricsBtn')?.addEventListener('click',()=>{setText('lyricsTitle',current().title||'Song lyrics');show($('lyricsOverlay'))});$('lyricsClose')?.addEventListener('click',()=>hide($('lyricsOverlay')));
+document.querySelectorAll('.song-card').forEach(card=>card.addEventListener('click',e=>{if(e.target.closest('.heart'))return;const local=cardSong(card);let idx=songs.findIndex(s=>Number(s.id)===local.id);if(idx<0){songs.push(local);idx=songs.length-1}selectSong(idx,true,true)}));document.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));ch.classList.add('active');filterCards(ch.dataset.mood)}));document.querySelectorAll('.mood-card').forEach(c=>c.addEventListener('click',()=>{const ch=[...document.querySelectorAll('.chip')].find(x=>x.dataset.mood===c.dataset.moodJump);if(ch){ch.click();$('collection')?.scrollIntoView({behavior:'smooth'})}}));
+let timer;$('searchInput')?.addEventListener('input',e=>{clearTimeout(timer);const q=e.target.value.trim();if(q.length<2){const b=$('searchResults');if(b)b.innerHTML='';setText('searchStatus','Song, artist ya movie search karo.');return}setText('searchStatus','Gaana dhoond rahe hain…');timer=setTimeout(async()=>{try{let items=songs.filter(s=>`${s.title} ${s.artist} ${s.movie} ${s.year}`.toLowerCase().includes(q.toLowerCase())).slice(0,12).map(s=>({...s,thumb:s.thumb||(s.yt?`https://i.ytimg.com/vi/${s.yt}/hqdefault.jpg`:'' )}));if(!items.length){const r=await fetch(`/api/youtube-search?q=${encodeURIComponent(q)}`),d=await r.json();if(!r.ok)throw Error(d.error||'Search failed');items=d.items||[]}setText('searchStatus',`${items.length} results — gaane par click karo`);const b=$('searchResults');if(!b)return;b.innerHTML=items.map((s,i)=>`<button class="search-result" data-search-index="${i}"><span class="search-thumb" style="background-image:url('${s.thumb||''}')"></span><span><b>${s.title||''}</b><small>${s.artist||'YouTube'} · ${s.year||''}</small></span><strong>▶</strong></button>`).join('')||'<div class="search-empty">Kuch nahi mila.</div>';b.querySelectorAll('[data-search-index]').forEach(e=>e.onclick=()=>{const s=items[Number(e.dataset.searchIndex)],idx=songs.findIndex(x=>x.yt&&s.yt&&x.yt===s.yt);if(idx>=0)currentIndex=idx;else{songs.push(s);currentIndex=songs.length-1}hide($('searchOverlay'));updateUI();renderQueue();openFull(s,true)})}catch(err){setText('searchStatus',err.message||'Search failed')}},300)});window.addEventListener('keydown',e=>{if(e.key==='Escape'){closeFull();document.querySelectorAll('.overlay').forEach(hide);hide($('queueDrawer'))}})}
+async function start(){bind();loadAPI();await loadSongs();if(songs.length){const f=songs.findIndex(s=>s.yt);currentIndex=f>=0?f:0;renderQueue();updateUI()}}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
