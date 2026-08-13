@@ -1,40 +1,138 @@
-let player=null,ready=false,isPlaying=false,currentIndex=0;
-let songs=window.LOVE_SONGS||[];
-const $=id=>document.getElementById(id);
-const fmt=s=>{s=Math.max(0,Math.floor(s||0));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`};
-const playable=s=>!!(s&&s.yt);
-function current(){return songs[currentIndex]||{}}
-function updateUI(){const s=current();$('playerTitle').textContent=s.title||'Choose a song';$('playerArtist').textContent=s.artist&&s.movie?`${s.artist} · ${s.movie}`:(s.artist||'');$('playerMood').textContent=`${(s.mood||'BOLLYWOOD').toUpperCase()} · ${s.year||''}`;$('heroTitle').textContent=s.title||'Love Roadways';$('heroArtist').textContent=s.artist&&s.movie?`${s.artist} · ${s.movie}`:(s.artist||'');$('heroMood').textContent=(s.mood||'BOLLYWOOD').toUpperCase();$('fullTitle').textContent=s.title||'';$('fullArtist').textContent=s.artist&&s.movie?`${s.artist} · ${s.movie}`:(s.artist||'');$('fullMood').textContent=(s.mood||'BOLLYWOOD').toUpperCase();$('ytThumb').style.backgroundImage=s.yt?`url(https://i.ytimg.com/vi/${s.yt}/hqdefault.jpg)`:'';$('playBtn').textContent=isPlaying?'Ⅱ':'▶';$('heroCardPlay').textContent=isPlaying?'Ⅱ':'▶';$('fullPlay').textContent=isPlaying?'Ⅱ':'▶'}
-function setCurrent(i,autoplay=false){if(!songs.length)return;currentIndex=(i+songs.length)%songs.length;const s=current();updateUI();if(player&&ready&&playable(s)){player.loadVideoById(s.yt);if(autoplay){player.unMute();player.playVideo();isPlaying=true}}renderQueue();updateUI()}
-function play(){const s=current();if(!playable(s)||!player||!ready)return false;player.unMute();player.playVideo();isPlaying=true;updateUI();return true}
-function pause(){if(player&&ready){player.pauseVideo();isPlaying=false;updateUI()}}
-function next(){if(songs.length)setCurrent((currentIndex+1)%songs.length,true)}
-function prev(){if(songs.length)setCurrent((currentIndex-1+songs.length)%songs.length,true)}
-function openFull(){const s=current();if(!s.yt)return;const bg=$('fullBg');bg.style.backgroundImage=`url(https://i.ytimg.com/vi/${s.yt}/maxresdefault.jpg)`;$('fullscreenPlayer').classList.add('open');if(player&&ready){player.unMute();player.playVideo();isPlaying=true;updateUI()}}
-function closeFull(){pause();$('fullscreenPlayer').classList.remove('open')}
-function onYouTubeIframeAPIReady(){player=new YT.Player('fullYoutube',{height:'100%',width:'100%',videoId:'',playerVars:{autoplay:0,controls:1,rel:0,playsinline:1,modestbranding:1},events:{onReady:()=>{ready=true;const first=songs.findIndex(playable);if(first>=0){currentIndex=first;updateUI();setCurrent(first,false)}},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING)isPlaying=true;if(e.data===YT.PlayerState.PAUSED)isPlaying=false;if(e.data===YT.PlayerState.ENDED){isPlaying=false;next()}updateUI()},onError:e=>{isPlaying=false;updateUI();console.warn('YouTube player error',e.data)}}})}
-setInterval(()=>{if(player&&ready&&isPlaying){const t=player.getCurrentTime(),d=player.getDuration();$('curTime').textContent=fmt(t);$('durTime').textContent=fmt(d);$('seek').value=d?(t/d)*100:0}},500);
-$('playBtn').onclick=()=>isPlaying?pause():play();
-$('heroPlay').onclick=()=>{if(play())openFull();else resolveAndPlay(current())};
-$('heroCardPlay').onclick=()=>{if(play())openFull();else resolveAndPlay(current())};
-$('fullPlay').onclick=()=>isPlaying?pause():play();
-$('nextBtn').onclick=next;$('prevBtn').onclick=prev;$('fullNext').onclick=next;$('fullPrev').onclick=prev;$('fullClose').onclick=closeFull;
-$('seek').oninput=e=>{if(player&&ready)player.seekTo(player.getDuration()*(e.target.value/100),true)};
-$('muteBtn').onclick=()=>{if(player&&ready){if(player.isMuted())player.unMute();else player.mute()}};
-$('shuffleBtn').onclick=()=>{if(songs.length){setCurrent(Math.floor(Math.random()*songs.length),true);openFull()}};
-$('openVideo').onclick=openFull;
-$('themeBtn').onclick=()=>document.body.classList.toggle('dark');
-function renderQueue(){const q=[];for(let n=1;n<=songs.length&&q.length<5;n++){const s=songs[(currentIndex+n)%songs.length];if(s)q.push(s)}$('queueCount').textContent=q.length;$('queueList').innerHTML=q.map((s,n)=>`<div class="queue-item" data-qid="${songs.indexOf(s)}"><b>${String(n+1).padStart(2,'0')}</b><div><b>${s.title}</b><small>${s.artist||''}</small></div></div>`).join('')||'<p style="padding:15px;color:#777;font-size:12px">Queue empty.</p>';document.querySelectorAll('[data-qid]').forEach(x=>x.onclick=()=>{setCurrent(Number(x.dataset.qid),true);openFull()})}
-function cardSong(card){return{id:Number(card.dataset.id),title:card.querySelector('h3')?.textContent.trim()||'',artist:card.querySelector('p')?.textContent.split('·')[0].trim()||'',movie:card.querySelector('p')?.textContent.split('·').slice(1).join('·').trim()||'',year:card.querySelector('small')?.textContent.split('·')[0].trim()||'',mood:card.dataset.mood||'Bollywood',yt:card.querySelector('.song-photo')?.src?.match(/vi\/([^/]+)\//)?.[1]||'',thumb:card.querySelector('.song-photo')?.src||''}}
-async function resolveAndPlay(s){if(!s||!s.title)return;$('searchStatus').textContent='Gaana dhoond rahe hain…';try{const r=await fetch(`/api/youtube-search?q=${encodeURIComponent(`${s.title} ${s.artist||''}`)}`);const data=await r.json();if(!r.ok||!data.items?.length)throw new Error(data.error||'Is song ka playable video nahi mila.');const found=data.items[0];s.yt=found.yt;s.thumb=found.thumb;s.movie=s.movie||found.movie;const idx=songs.indexOf(s);if(idx>=0)currentIndex=idx;else{songs.push(s);currentIndex=songs.length-1}updateUI();openFull()}catch(e){alert(e.message)}}
-document.querySelectorAll('.song-card').forEach(card=>{card.onclick=e=>{if(e.target.closest('.heart'))return;const local=cardSong(card),found=songs.findIndex(s=>s.id===local.id);if(found>=0){currentIndex=found;const s=songs[found];if(s.yt){setCurrent(found,true);openFull()}else resolveAndPlay(s)}else{songs.push(local);currentIndex=songs.length-1;resolveAndPlay(local)}}});
-document.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));ch.classList.add('active');document.querySelectorAll('.song-card').forEach(c=>c.style.display=(ch.dataset.mood==='All'||ch.dataset.mood===c.dataset.mood)?'':'none')});
-document.querySelectorAll('.mood-card').forEach(c=>c.onclick=()=>{const ch=[...document.querySelectorAll('.chip')].find(x=>x.dataset.mood===c.dataset.moodJump);if(ch){ch.click();document.querySelector('#collection').scrollIntoView({behavior:'smooth'})}});
-$('searchOpen').onclick=()=>{$('searchOverlay').classList.add('open');$('searchInput').focus()};$('searchClose').onclick=()=>{$('searchOverlay').classList.remove('open')};
-let searchTimer;
-function showResults(items,error=''){ $('searchStatus').textContent=error||`${items.length} results — title par click karo`;$('searchResults').innerHTML=items.map((s,i)=>`<button class="search-result" data-search-index="${i}"><span class="search-thumb" style="background-image:url('${s.thumb||''}')"></span><span><b>${s.title}</b><small>${s.artist||'YouTube'} · ${s.year||''}</small></span><strong>▶</strong></button>`).join('')||`<div class="search-empty">${error||'Kuch nahi mila. Dusra song/artist try karo.'}</div>`;document.querySelectorAll('[data-search-index]').forEach(x=>x.onclick=()=>{const s=items[Number(x.dataset.searchIndex)];const existing=songs.findIndex(a=>a.yt===s.yt);if(existing>=0)currentIndex=existing;else{songs.push(s);currentIndex=songs.length-1}updateUI();$('searchOverlay').classList.remove('open');openFull()})}
-$('searchInput').oninput=e=>{clearTimeout(searchTimer);const q=e.target.value.trim();if(q.length<2){$('searchResults').innerHTML='';$('searchStatus').textContent='YouTube par Bollywood songs search honge.';return}searchTimer=setTimeout(async()=>{ $('searchStatus').textContent='Gaane dhoond rahe hain…';try{const r=await fetch(`/api/youtube-search?q=${encodeURIComponent(q)}`),data=await r.json();if(!r.ok)throw new Error(data.error||'Search failed');showResults(data.items||[])}catch(err){showResults([],err.message)}},350)};
-$('lyricsBtn').onclick=()=>{$('lyricsTitle').textContent=current().title||'Song lyrics';$('lyricsOverlay').classList.add('open')};$('lyricsClose').onclick=()=>{$('lyricsOverlay').classList.remove('open')};$('queueBtn').onclick=()=>{$('queueDrawer').classList.add('open')};$('queueClose').onclick=()=>{$('queueDrawer').classList.remove('open')};
-window.addEventListener('keydown',e=>{if(e.key==='Escape'){closeFull();document.querySelectorAll('.overlay').forEach(x=>x.classList.remove('open'));$('queueDrawer').classList.remove('open')}});
-const style=document.createElement('style');style.textContent=`.fullscreen-player{position:fixed;inset:0;z-index:9999;display:none;place-items:center;background:#15121a;color:#fff;overflow:hidden}.fullscreen-player.open{display:grid;animation:fullIn .35s ease}.full-bg{position:absolute;inset:-8%;background-size:cover;background-position:center;filter:blur(35px) brightness(.35);transform:scale(1.08)}.full-bg:after{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(244,79,123,.25),rgba(30,22,50,.72))}.full-content{position:relative;z-index:3;width:min(1100px,92vw);display:grid;grid-template-columns:1.45fr .55fr;gap:30px;align-items:center}.full-video{aspect-ratio:16/9;border-radius:28px;overflow:hidden;background:#000;box-shadow:0 30px 100px rgba(0,0,0,.45);position:relative}.full-video>div:first-child{position:absolute;inset:0}.full-video iframe{width:100%!important;height:100%!important}.full-info{padding:20px}.full-info small{font:10px "DM Mono";letter-spacing:2px;color:#ffabc0}.full-info h2{font:500 clamp(34px,4vw,62px)/1 "Playfair Display";margin:12px 0}.full-info p{color:#ddd;margin-bottom:35px}.full-actions{display:flex;gap:12px}.full-actions button{width:54px;height:54px;border:1px solid rgba(255,255,255,.2);border-radius:50%;background:rgba(255,255,255,.1);color:#fff}.full-actions button:nth-child(2){background:#f24f7b;border:0}.full-close{position:absolute;right:28px;top:22px;z-index:5;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;font-size:30px}.full-particles{position:absolute;inset:0;z-index:2;pointer-events:none}.full-particles i{position:absolute;color:rgba(255,190,207,.7);font-style:normal;font-size:24px;animation:floatNote 7s ease-in-out infinite}.full-particles i:nth-child(1){left:8%;bottom:18%}.full-particles i:nth-child(2){left:28%;top:14%;animation-delay:1s}.full-particles i:nth-child(3){right:15%;top:22%;animation-delay:2s}.full-particles i:nth-child(4){right:7%;bottom:16%;animation-delay:3s}.full-particles i:nth-child(5){left:48%;top:8%;animation-delay:4s}.full-particles i:nth-child(6){left:82%;bottom:38%;animation-delay:5s}@keyframes floatNote{0%,100%{transform:translateY(0) rotate(0);opacity:.25}50%{transform:translateY(-35px) rotate(12deg);opacity:1}}@keyframes fullIn{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}.search-result{width:100%;display:flex;align-items:center;gap:14px;padding:10px;text-align:left;border-radius:12px}.search-result:hover{background:#fff0f4}.search-thumb{width:64px;height:44px;border-radius:8px;background-size:cover;background-position:center;flex:none}.search-result span:nth-child(2){flex:1}.search-result b,.search-result small{display:block}.search-result small{color:#8b8490;font-size:10px;margin-top:3px}.search-result strong{color:#f24f7b}.search-status,.search-empty{color:#8b8490;font-size:12px}@media(max-width:800px){.full-content{grid-template-columns:1fr}.full-info{padding:0 10px}.full-info h2{font-size:34px}.full-video{width:100%}}`;document.head.appendChild(style);
-const firstPlayable=songs.findIndex(playable);if(firstPlayable>=0)currentIndex=firstPlayable;renderQueue();updateUI();
+(() => {
+  const $ = id => document.getElementById(id);
+  const songs = window.LOVE_SONGS || [];
+  let currentIndex = 0;
+  let playing = false;
+
+  function current(){ return songs[currentIndex] || {}; }
+  function setText(id, value){ const el=$(id); if(el) el.textContent=value || ''; }
+  function updateUI(){
+    const s=current();
+    setText('playerTitle', s.title || 'Choose a song');
+    setText('playerArtist', s.artist && s.movie ? `${s.artist} · ${s.movie}` : (s.artist || ''));
+    setText('playerMood', `${(s.mood||'BOLLYWOOD').toUpperCase()} · ${s.year||''}`);
+    setText('heroTitle', s.title || 'Love Roadways');
+    setText('heroArtist', s.artist && s.movie ? `${s.artist} · ${s.movie}` : (s.artist || ''));
+    setText('heroMood', (s.mood||'BOLLYWOOD').toUpperCase());
+    setText('fullTitle', s.title || '');
+    setText('fullArtist', s.artist && s.movie ? `${s.artist} · ${s.movie}` : (s.artist || ''));
+    setText('fullMood', (s.mood||'BOLLYWOOD').toUpperCase());
+    const thumb=$('ytThumb'); if(thumb) thumb.style.backgroundImage=s.yt?`url(https://i.ytimg.com/vi/${s.yt}/hqdefault.jpg)`:'';
+    ['playBtn','heroCardPlay','fullPlay'].forEach(id=>{const el=$(id);if(el)el.textContent=playing?'Ⅱ':'▶'});
+  }
+
+  function youtubeUrl(id){
+    return `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&playsinline=1`;
+  }
+
+  function openFull(song=current()){
+    if(!song || !song.yt) return;
+    const full=$('fullscreenPlayer');
+    const bg=$('fullBg');
+    const frame=$('fullYoutube');
+    if(bg) bg.style.backgroundImage=`url(https://i.ytimg.com/vi/${song.yt}/maxresdefault.jpg)`;
+    if(frame) frame.innerHTML=`<iframe src="${youtubeUrl(song.yt)}" title="${(song.title||'YouTube song').replace(/"/g,'&quot;')}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+    if(full) full.classList.add('open');
+    playing=true; updateUI();
+  }
+
+  function closeFull(){
+    const full=$('fullscreenPlayer'); if(full) full.classList.remove('open');
+    const frame=$('fullYoutube'); if(frame) frame.innerHTML='';
+    playing=false; updateUI();
+  }
+
+  function selectSong(index, open=true){
+    if(index<0 || index>=songs.length) return;
+    currentIndex=index; updateUI(); renderQueue();
+    const s=current();
+    if(open && s.yt) openFull(s);
+    else if(open && s.title) resolveSong(s);
+  }
+
+  async function resolveSong(song){
+    try{
+      const r=await fetch(`/api/youtube-search?q=${encodeURIComponent(`${song.title} ${song.artist||''}`)}`);
+      const data=await r.json();
+      if(!r.ok || !data.items || !data.items.length) throw new Error(data.error || 'Playable YouTube video nahi mila.');
+      song.yt=data.items[0].yt;
+      song.thumb=data.items[0].thumb;
+      updateUI(); openFull(song);
+    }catch(e){ alert(e.message || 'Song load nahi ho paya.'); }
+  }
+
+  function renderQueue(){
+    const box=$('queueList'); if(!box)return;
+    const list=[];
+    for(let n=1;n<=songs.length && list.length<5;n++) list.push(songs[(currentIndex+n)%songs.length]);
+    const count=$('queueCount'); if(count)count.textContent=list.length;
+    box.innerHTML=list.map((s,n)=>`<div class="queue-item" data-qid="${songs.indexOf(s)}"><b>${String(n+1).padStart(2,'0')}</b><div><b>${s.title}</b><small>${s.artist||''}</small></div></div>`).join('') || '<p style="padding:15px;color:#777;font-size:12px">Queue empty.</p>';
+    box.querySelectorAll('[data-qid]').forEach(el=>el.onclick=()=>selectSong(Number(el.dataset.qid),true));
+  }
+
+  function cardSong(card){
+    return {id:Number(card.dataset.id),title:card.querySelector('h3')?.textContent.trim()||'',artist:card.querySelector('p')?.textContent.split('·')[0].trim()||'',movie:card.querySelector('p')?.textContent.split('·').slice(1).join('·').trim()||'',year:card.querySelector('small')?.textContent.split('·')[0].trim()||'',mood:card.dataset.mood||'Bollywood',yt:card.querySelector('.song-photo')?.src?.match(/vi\/([^/]+)\//)?.[1]||''};
+  }
+
+  function bind(){
+    $('searchOpen')?.addEventListener('click',e=>{e.preventDefault();$('searchOverlay')?.classList.add('open');setTimeout(()=>$('searchInput')?.focus(),50);});
+    $('searchClose')?.addEventListener('click',()=>$('searchOverlay')?.classList.remove('open'));
+    $('fullClose')?.addEventListener('click',closeFull);
+    $('openVideo')?.addEventListener('click',()=>openFull());
+    $('heroPlay')?.addEventListener('click',()=>selectSong(currentIndex,true));
+    $('heroCardPlay')?.addEventListener('click',()=>selectSong(currentIndex,true));
+    $('playBtn')?.addEventListener('click',()=>{playing=!playing;updateUI();if(playing)selectSong(currentIndex,true);});
+    $('fullPlay')?.addEventListener('click',()=>{if(playing){closeFull()}else openFull()});
+    $('nextBtn')?.addEventListener('click',()=>selectSong((currentIndex+1)%songs.length,true));
+    $('prevBtn')?.addEventListener('click',()=>selectSong((currentIndex-1+songs.length)%songs.length,true));
+    $('fullNext')?.addEventListener('click',()=>selectSong((currentIndex+1)%songs.length,true));
+    $('fullPrev')?.addEventListener('click',()=>selectSong((currentIndex-1+songs.length)%songs.length,true));
+    $('themeBtn')?.addEventListener('click',()=>document.body.classList.toggle('dark'));
+    $('shuffleBtn')?.addEventListener('click',()=>{if(songs.length)selectSong(Math.floor(Math.random()*songs.length),true)});
+    $('queueBtn')?.addEventListener('click',()=>$('queueDrawer')?.classList.add('open'));
+    $('queueClose')?.addEventListener('click',()=>$('queueDrawer')?.classList.remove('open'));
+    $('lyricsBtn')?.addEventListener('click',()=>{$('lyricsTitle').textContent=current().title||'Song lyrics';$('lyricsOverlay')?.classList.add('open')});
+    $('lyricsClose')?.addEventListener('click',()=>$('lyricsOverlay')?.classList.remove('open'));
+
+    document.querySelectorAll('.song-card').forEach(card=>card.addEventListener('click',e=>{
+      if(e.target.closest('.heart'))return;
+      const local=cardSong(card);let idx=songs.findIndex(s=>s.id===local.id);
+      if(idx<0){songs.push(local);idx=songs.length-1;}
+      selectSong(idx,true);
+    }));
+
+    document.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>{
+      document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));ch.classList.add('active');
+      document.querySelectorAll('.song-card').forEach(c=>c.style.display=(ch.dataset.mood==='All'||c.dataset.mood===c.dataset.mood)?'':'none');
+    }));
+
+    document.querySelectorAll('.mood-card').forEach(c=>c.addEventListener('click',()=>{
+      const ch=[...document.querySelectorAll('.chip')].find(x=>x.dataset.mood===c.dataset.moodJump);if(ch){ch.click();$('collection')?.scrollIntoView({behavior:'smooth'});}
+    }));
+
+    let timer;
+    $('searchInput')?.addEventListener('input',e=>{
+      clearTimeout(timer);const q=e.target.value.trim();
+      if(q.length<2){$('searchResults').innerHTML='';$('searchStatus').textContent='Song, artist ya movie search karo.';return;}
+      $('searchStatus').textContent='Gaana dhoond rahe hain…';
+      timer=setTimeout(async()=>{
+        try{
+          const r=await fetch(`/api/youtube-search?q=${encodeURIComponent(q)}`);const data=await r.json();
+          if(!r.ok)throw new Error(data.error||'Search failed');
+          const items=data.items||[];$('searchStatus').textContent=`${items.length} results — gaane par click karo`;
+          $('searchResults').innerHTML=items.map((s,i)=>`<button class="search-result" data-search-index="${i}"><span class="search-thumb" style="background-image:url('${s.thumb||''}')"></span><span><b>${s.title}</b><small>${s.artist||'YouTube'} · ${s.year||''}</small></span><strong>▶</strong></button>`).join('')||'<div class="search-empty">Kuch nahi mila.</div>';
+          document.querySelectorAll('[data-search-index]').forEach(el=>el.onclick=()=>{const s=items[Number(el.dataset.searchIndex)];songs.push(s);currentIndex=songs.length-1;$('searchOverlay').classList.remove('open');updateUI();openFull(s);});
+        }catch(err){$('searchStatus').textContent=err.message;}
+      },300);
+    });
+
+    window.addEventListener('keydown',e=>{if(e.key==='Escape'){closeFull();document.querySelectorAll('.overlay').forEach(x=>x.classList.remove('open'));$('queueDrawer')?.classList.remove('open');}});
+  }
+
+  function start(){
+    if(!songs.length)return;
+    const first=songs.findIndex(s=>s.yt);currentIndex=first>=0?first:0;
+    renderQueue();updateUI();bind();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
+})();
