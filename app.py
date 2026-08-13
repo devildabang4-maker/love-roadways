@@ -1,7 +1,10 @@
 from flask import Flask, render_template, jsonify, request
-import sqlite3, os
-app=Flask(__name__); DB=os.path.join(os.path.dirname(__file__),"love_roadways.db")
-OLD_CLASSICS=[
+import sqlite3, os, json, urllib.parse, urllib.request
+
+app = Flask(__name__)
+DB = os.path.join(os.path.dirname(__file__), "love_roadways.db")
+
+OLD_CLASSICS = [
 ("Lag Ja Gale","Lata Mangeshkar","Woh Kaun Thi?","1964","Evergreen",""),
 ("Ajeeb Dastan Hai Yeh","Lata Mangeshkar","Dil Apna Aur Preet Parai","1960","Evergreen",""),
 ("Pal Pal Dil Ke Paas","Kishore Kumar","Blackmail","1973","Romantic",""),
@@ -51,32 +54,75 @@ OLD_CLASSICS=[
 ("Chithi Na Koi Sandesh","Jagjit Singh","Dushman","1998","Sad",""),
 ("Adayein Bhi Hain","Abhijeet, Alka Yagnik","Dil Hai Ke Manta Nahin","1991","Romantic",""),
 ("Tu Shayar Hai","Alka Yagnik","Saajan","1991","Romantic",""),
-("Bahut Pyar Karte Hain","Anuradha Paudwal","Saajan","1991","Romantic",""),
-("Main Koi Aisa Geet Gaoon","Abhijeet, Alka Yagnik","Yes Boss","1997","Romantic","")]
+("Bahut Pyar Karte Hain","Anuradha Paudwal","Saajan","1991","Romantic","")
+]
 
-def db(): c=sqlite3.connect(DB); c.row_factory=sqlite3.Row; return c
+def db():
+    c = sqlite3.connect(DB)
+    c.row_factory = sqlite3.Row
+    return c
+
 def init_db():
- c=db(); c.execute("CREATE TABLE IF NOT EXISTS songs(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,artist TEXT,movie TEXT,year TEXT,category TEXT,youtube_id TEXT DEFAULT '',favorite INTEGER DEFAULT 0)"); c.execute("DELETE FROM songs WHERE CAST(year AS INTEGER)>=2000"); existing={r[0] for r in c.execute("SELECT title FROM songs")};
- for row in OLD_CLASSICS:
-  if row[0] not in existing: c.execute("INSERT INTO songs(title,artist,movie,year,category,youtube_id) VALUES(?,?,?,?,?,?)",row)
- c.commit(); c.close()
+    c = db()
+    c.execute("CREATE TABLE IF NOT EXISTS songs(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,artist TEXT,movie TEXT,year TEXT,category TEXT,youtube_id TEXT DEFAULT '',favorite INTEGER DEFAULT 0)")
+    c.execute("DELETE FROM songs WHERE CAST(year AS INTEGER)>=2000")
+    existing = {r[0] for r in c.execute("SELECT title FROM songs")}
+    for row in OLD_CLASSICS:
+        if row[0] not in existing:
+            c.execute("INSERT INTO songs(title,artist,movie,year,category,youtube_id) VALUES(?,?,?,?,?,?)", row)
+    c.commit(); c.close()
+
 init_db()
+
 @app.route("/")
 def home():
- c=db(); songs=[dict(x) for x in c.execute("SELECT * FROM songs WHERE CAST(year AS INTEGER)<2000 ORDER BY CAST(year AS INTEGER),id")]; c.close(); return render_template("index.html",songs=songs)
+    c = db(); songs = [dict(x) for x in c.execute("SELECT * FROM songs WHERE CAST(year AS INTEGER)<2000 ORDER BY CAST(year AS INTEGER),id")]; c.close()
+    return render_template("index.html", songs=songs)
+
 @app.get("/api/songs")
 def songs_api():
- q=request.args.get("q","").lower(); cat=request.args.get("category","All"); c=db(); rows=c.execute("SELECT * FROM songs WHERE CAST(year AS INTEGER)<2000 ORDER BY CAST(year AS INTEGER),id"); out=[]
- for r in rows:
-  s=dict(r); text=f'{s["title"]} {s["artist"]} {s["movie"]} {s["category"]}'.lower()
-  if (not q or q in text) and (cat=="All" or s["category"]==cat): out.append(s)
- c.close(); return jsonify(out)
+    q = request.args.get("q", "").lower(); cat = request.args.get("category", "All")
+    c = db(); rows = c.execute("SELECT * FROM songs WHERE CAST(year AS INTEGER)<2000 ORDER BY CAST(year AS INTEGER),id"); out=[]
+    for r in rows:
+        s=dict(r); text=f'{s["title"]} {s["artist"]} {s["movie"]} {s["category"]}'.lower()
+        if (not q or q in text) and (cat=="All" or s["category"]==cat): out.append(s)
+    c.close(); return jsonify(out)
+
+@app.get("/api/youtube-search")
+def youtube_search():
+    key = os.environ.get("YOUTUBE_API_KEY", "").strip()
+    q = request.args.get("q", "").strip()
+    if not key:
+        return jsonify({"error":"YOUTUBE_API_KEY is not configured on the server yet."}), 503
+    if len(q) < 2:
+        return jsonify({"items":[]})
+    params = urllib.parse.urlencode({
+        "part":"snippet", "q":f"{q} Bollywood Hindi song official", "type":"video",
+        "videoEmbeddable":"true", "videoSyndicated":"true", "maxResults":"12",
+        "regionCode":"IN", "relevanceLanguage":"hi", "key":key
+    })
+    try:
+        with urllib.request.urlopen("https://www.googleapis.com/youtube/v3/search?"+params, timeout=8) as response:
+            data=json.loads(response.read().decode("utf-8"))
+        items=[]
+        for x in data.get("items",[]):
+            vid=x.get("id",{}).get("videoId")
+            sn=x.get("snippet",{})
+            if not vid: continue
+            items.append({"id":vid,"title":sn.get("title",""),"artist":sn.get("channelTitle",""),"movie":"YouTube","year":sn.get("publishedAt","")[:4],"mood":"Bollywood","yt":vid,"thumb":sn.get("thumbnails",{}).get("high",{}).get("url",f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg")})
+        return jsonify({"items":items})
+    except Exception as e:
+        return jsonify({"error":"YouTube search is temporarily unavailable.","detail":str(e)}),502
+
 @app.post("/api/songs")
 def add_song():
- d=request.get_json(force=True)
- if not d.get("title") or int(d.get("year",0))>=2000:return jsonify({"error":"Only pre-2000 Bollywood songs are allowed"}),400
- c=db(); cur=c.execute("INSERT INTO songs(title,artist,movie,year,category,youtube_id) VALUES(?,?,?,?,?,?)",[d.get(k,"") for k in ["title","artist","movie","year","category","youtube_id"]]); c.commit(); row=dict(c.execute("SELECT * FROM songs WHERE id=?",(cur.lastrowid,)).fetchone()); c.close(); return jsonify(row)
+    d=request.get_json(force=True)
+    if not d.get("title") or int(d.get("year",0) or 0)>=2000:return jsonify({"error":"Only pre-2000 Bollywood songs are allowed"}),400
+    c=db(); cur=c.execute("INSERT INTO songs(title,artist,movie,year,category,youtube_id) VALUES(?,?,?,?,?,?)",[d.get(k,"") for k in ["title","artist","movie","year","category","youtube_id"]]); c.commit(); row=dict(c.execute("SELECT * FROM songs WHERE id=?",(cur.lastrowid,)).fetchone()); c.close(); return jsonify(row)
+
 @app.get("/admin")
 def admin():
- c=db(); songs=[dict(x) for x in c.execute("SELECT * FROM songs WHERE CAST(year AS INTEGER)<2000 ORDER BY CAST(year AS INTEGER),id")]; c.close(); return render_template("admin.html",songs=songs)
-if __name__=="__main__":app.run(debug=True)
+    c=db(); songs=[dict(x) for x in c.execute("SELECT * FROM songs WHERE CAST(year AS INTEGER)<2000 ORDER BY CAST(year AS INTEGER),id")]; c.close(); return render_template("admin.html",songs=songs)
+
+if __name__=="__main__":
+    app.run(debug=True)
